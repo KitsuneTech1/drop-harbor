@@ -1,0 +1,22 @@
+﻿node_modules/
+uploads/
+data/
+.env
+*.log
+
+# build artifacts
+dist/
+build/
+target/
+coverage/
+*.tgz
+
+# python
+.venv/
+__pycache__/
+
+# os cruft
+.DS_Store
+Thumbs.db
+
+.oss31/
