@@ -1,0 +1,33 @@
+{
+  "name": "drop-harbor",
+  "version": "1.0.0",
+  "description": "Self-hosted file drop: upload, share a link, search, expire.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test --test-reporter=spec test/server.test.js"
+  },
+  "keywords": [
+    "file-hosting",
+    "file-drop",
+    "uploads",
+    "downloads",
+    "expiry",
+    "express",
+    "self-hosted"
+  ],
+  "author": "Kitsune Technologies LLC",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "multer": "^2.4.0"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
+  }
+}

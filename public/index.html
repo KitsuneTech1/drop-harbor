@@ -1,0 +1,159 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drop Harbor</title>
+    <meta
+      name="description"
+      content="Self-hosted file drop: upload, share a link, search, expire."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="background-glow background-glow-a"></div>
+    <div class="background-glow background-glow-b"></div>
+
+    <main class="shell">
+      <section class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">Self-hosted file drop</p>
+          <h1>Upload fast. Share clean links.</h1>
+          <p class="lede">
+            Drop Harbor runs on your own box. Drop files in, get a public download link for
+            each one, search your library, and set a lifetime so nothing sticks around
+            longer than you meant.
+          </p>
+
+          <div class="hero-actions">
+            <a class="button button-primary" href="#upload-card">Upload files</a>
+            <a class="button button-secondary" href="#library-card">Browse library</a>
+          </div>
+
+          <div class="stat-row" id="stat-row">
+            <article class="stat-card">
+              <span class="stat-label">Files hosted</span>
+              <strong class="stat-value" id="file-count">0</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Storage used</span>
+              <strong class="stat-value" id="storage-used">0 B</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Upload mode</span>
+              <strong class="stat-value" id="upload-mode">Open</strong>
+            </article>
+          </div>
+        </div>
+
+        <div class="hero-aside">
+          <div class="orbital-card">
+            <div class="orbital-ring orbital-ring-one"></div>
+            <div class="orbital-ring orbital-ring-two"></div>
+            <div class="orbital-core">
+              <span>Instant links</span>
+              <strong>12 file batch uploads</strong>
+              <p>Drag, drop, copy, done.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <article class="panel upload-card" id="upload-card">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Uploader</p>
+              <h2>Quick drop zone</h2>
+            </div>
+            <p class="section-note" id="limit-copy">Checking upload settings...</p>
+          </div>
+
+          <form id="upload-form" class="upload-form">
+            <label class="dropzone" id="dropzone" for="file-input">
+              <input id="file-input" name="files" type="file" multiple />
+              <span class="dropzone-badge">Drag and drop</span>
+              <strong>Drop files anywhere in this card</strong>
+              <p>or click to pick files from your device</p>
+            </label>
+
+            <div class="form-row">
+              <label class="field">
+                <span>Expires after</span>
+                <select id="expiry-select" name="expiryHours">
+                  <option value="1">1 hour</option>
+                  <option value="24">1 day</option>
+                  <option value="168" selected>7 days</option>
+                  <option value="720">30 days</option>
+                  <option value="0">Never</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Admin token</span>
+                <input
+                  id="upload-token"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Only needed if uploads are protected"
+                />
+              </label>
+
+              <button class="button button-primary upload-button" id="upload-button" type="submit">
+                Send files
+              </button>
+            </div>
+
+            <div class="feedback-strip" id="feedback-strip" aria-live="polite"></div>
+            <div class="progress-shell hidden" id="progress-shell">
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <ul class="selected-files" id="selected-files"></ul>
+          </form>
+        </article>
+
+        <article class="panel library-card" id="library-card">
+          <div class="section-heading section-heading-tight">
+            <div>
+              <p class="eyebrow">Library</p>
+              <h2>Shared downloads</h2>
+            </div>
+            <button class="button button-ghost" id="refresh-button" type="button">Refresh</button>
+          </div>
+
+          <div class="toolbar">
+            <label class="field search-field">
+              <span>Search files</span>
+              <input id="search-input" type="search" placeholder="Start typing a filename..." />
+            </label>
+          </div>
+
+          <div class="file-grid" id="file-grid"></div>
+          <div class="empty-state hidden" id="empty-state">
+            <strong>No files yet.</strong>
+            <p>Your first upload will show up here with a ready-to-share download link.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <template id="file-card-template">
+      <article class="file-card">
+        <div class="file-icon"></div>
+        <div class="file-body">
+          <strong class="file-name"></strong>
+          <p class="file-meta"></p>
+          <p class="file-expiry"></p>
+        </div>
+        <div class="file-actions">
+          <a class="button button-secondary file-download" target="_blank" rel="noreferrer">Download</a>
+          <button class="button button-ghost file-copy" type="button">Copy link</button>
+          <button class="button button-ghost file-delete" type="button">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
