@@ -55,6 +55,20 @@ function upload(filename, contents, expiryHours, token = "test-token") {
   });
 }
 
+function uploadFiles(entries, expiryHours, token = "test-token") {
+  const form = new FormData();
+  for (const [filename, contents] of entries) {
+    form.append("files", new File([contents], filename));
+  }
+  form.set("expiryHours", String(expiryHours));
+
+  return fetch(`${baseUrl}/api/upload`, {
+    method: "POST",
+    headers: token === null ? {} : { "x-upload-token": token },
+    body: form
+  });
+}
+
 test("health reports the upload is token protected", async () => {
   const response = await fetch(`${baseUrl}/api/health`);
 
@@ -156,6 +170,31 @@ test("an out of range expiry is rejected and leaves no orphan behind", async () 
   assert.match((await response.json()).error, /Expiry must be 0 \(never\) or between 1 and 8760 hours\./);
   // multer writes before the expiry check runs, so the route has to clean up.
   assert.deepStrictEqual(fs.readdirSync(UPLOAD_DIR).sort(), before.sort());
+});
+
+test("a fractional expiry is rejected and leaves no orphan behind", async () => {
+  const before = fs.readdirSync(UPLOAD_DIR);
+  const response = await upload("fractional.txt", "not forever", 0.5);
+
+  assert.strictEqual(response.status, 400);
+  assert.match((await response.json()).error, /Expiry must be 0 \(never\) or between 1 and 8760 hours\./);
+  assert.deepStrictEqual(fs.readdirSync(UPLOAD_DIR).sort(), before.sort());
+});
+
+test("a batch upload stores and lists every file", async () => {
+  const response = await uploadFiles([
+    ["first.txt", "first payload"],
+    ["second.bin", "second payload"]
+  ], 24);
+
+  assert.strictEqual(response.status, 201);
+  const body = await response.json();
+  assert.strictEqual(body.files.length, 2);
+  assert.deepStrictEqual(body.files.map((file) => file.originalName), ["first.txt", "second.bin"]);
+
+  const listed = await fetch(`${baseUrl}/api/files`);
+  const listedIds = (await listed.json()).files.map((file) => file.id);
+  assert.ok(body.files.every((file) => listedIds.includes(file.id)));
 });
 
 test("a sweep does not delete an upload whose metadata is not written yet", () => {

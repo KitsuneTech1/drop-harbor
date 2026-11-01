@@ -44,6 +44,7 @@ Invoke-Copy @(
   "package.json",
   "package-lock.json",
   "README.md",
+  ".env.example",
   "$SshTarget`:$RemoteAppDir/"
 )
 
