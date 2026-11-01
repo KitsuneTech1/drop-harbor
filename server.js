@@ -87,7 +87,7 @@ function resolveStoredPath(storedName) {
 function hoursToExpiry(rawHours) {
   const hours = Number(rawHours);
 
-  if (!Number.isFinite(hours) || hours < 0) {
+  if (!Number.isInteger(hours) || hours < 0) {
     return { ok: false };
   }
 

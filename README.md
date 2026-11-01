@@ -95,7 +95,7 @@ You should get back a `201` and JSON like this:
 - You uploaded a file, opened the copied link in a new tab, and got the same file back.
 - Typing part of the filename in the search box narrows the library down to it.
 - Clicking Delete removes the row, and the copied link then returns `File not found.`
-- `npm test` ends with `pass 6` and `fail 0`.
+- `npm test` ends with `pass 10` and `fail 0`.
 
 ## Troubleshooting
 
