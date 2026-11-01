@@ -8,7 +8,7 @@ const path = require("path");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "localhost";
 // Storage lives next to the app unless DROP_HARBOR_STORAGE_ROOT points elsewhere.
 const STORAGE_ROOT = process.env.DROP_HARBOR_STORAGE_ROOT || __dirname;
 const UPLOAD_DIR = path.join(STORAGE_ROOT, "uploads");
