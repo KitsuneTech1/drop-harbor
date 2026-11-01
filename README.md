@@ -41,11 +41,11 @@ That is all. There is no database and no build step.
    cp .env.example .env
    ```
    On Windows PowerShell, use `Copy-Item .env.example .env`.
-4. Open `.env` in a text editor and set an upload token. Generate one with:
+4. Open `.env` in a text editor and replace `YOUR_TOKEN` with an upload token. Generate one with:
    ```bash
    node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
    ```
-   Paste the output as the `UPLOAD_TOKEN` value, replacing `YOUR_TOKEN`. If you leave it blank, anyone who can reach the server can upload files and fill your disk.
+   Paste the output as the `UPLOAD_TOKEN` value. The server refuses to start with a blank or placeholder token unless you explicitly set `ALLOW_UNAUTHENTICATED_UPLOADS=true`.
 5. Start it:
    ```bash
    npm start
@@ -95,7 +95,7 @@ You should get back a `201` and JSON like this:
 - You uploaded a file, opened the copied link in a new tab, and got the same file back.
 - Typing part of the filename in the search box narrows the library down to it.
 - Clicking Delete removes the row, and the copied link then returns `File not found.`
-- `npm test` ends with `pass 10` and `fail 0`.
+- `npm test` ends with `pass 17` and `fail 0`.
 
 ## Troubleshooting
 
@@ -114,7 +114,8 @@ Set these in `.env`, or as real environment variables.
 | `PORT` | `3000` | Port the web server listens on |
 | `HOST` | `localhost` | Bind address. Set to `0.0.0.0` when other machines need to connect |
 | `MAX_FILE_SIZE_MB` | `1024` | Largest single file accepted, in MB |
-| `UPLOAD_TOKEN` | (blank) | Shared token required to upload and to delete. Blank means anyone can upload. Downloads are always public |
+| `UPLOAD_TOKEN` | (required) | Shared token required to upload and to delete. Downloads are always public |
+| `ALLOW_UNAUTHENTICATED_UPLOADS` | `false` | Explicitly allows uploads without a token. Use only on a trusted network |
 | `DEFAULT_EXPIRY_HOURS` | `168` | Lifetime used when an upload does not pick one. 168 is 7 days |
 | `MAX_EXPIRY_HOURS` | `8760` | Longest lifetime an upload may ask for. 8760 is 1 year |
 | `SWEEP_INTERVAL_MINUTES` | `5` | How often expired files and orphans are deleted off disk. An unclaimed file is left alone for its first hour, so a sweep cannot delete an upload still in progress |
