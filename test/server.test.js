@@ -12,7 +12,7 @@ process.env.DROP_HARBOR_STORAGE_ROOT = STORAGE_ROOT;
 process.env.UPLOAD_TOKEN = "test-token";
 process.env.MAX_EXPIRY_HOURS = "8760";
 
-const { app, sweep } = require("../server.js");
+const { app, sweep, parseNumericEnv, validateUploadAuth } = require("../server.js");
 
 const UPLOAD_DIR = path.join(STORAGE_ROOT, "uploads");
 const METADATA_PATH = path.join(STORAGE_ROOT, "data", "files.json");
@@ -181,6 +181,15 @@ test("a fractional expiry is rejected and leaves no orphan behind", async () => 
   assert.deepStrictEqual(fs.readdirSync(UPLOAD_DIR).sort(), before.sort());
 });
 
+test("whitespace expiry is rejected and leaves no orphan behind", async () => {
+  const before = fs.readdirSync(UPLOAD_DIR);
+  const response = await upload("whitespace.txt", "not forever", " ");
+
+  assert.strictEqual(response.status, 400);
+  assert.match((await response.json()).error, /Expiry must be 0 \(never\) or between 1 and 8760 hours\./);
+  assert.deepStrictEqual(fs.readdirSync(UPLOAD_DIR).sort(), before.sort());
+});
+
 test("a batch upload stores and lists every file", async () => {
   const response = await uploadFiles([
     ["first.txt", "first payload"],
@@ -220,4 +229,95 @@ test("a sweep does delete an orphan left behind long ago", () => {
 
   assert.ok(!fs.existsSync(stale), "an old unclaimed file must be swept off disk");
   assert.ok(result.orphans >= 1);
+});
+
+test("malformed metadata entries are ignored by the API and sweep", async () => {
+  fs.writeFileSync(METADATA_PATH, '[null, 7, {"id":"missing-fields"}]\n', "utf8");
+
+  assert.doesNotThrow(() => sweep());
+
+  const response = await fetch(`${baseUrl}/api/files`);
+  assert.strictEqual(response.status, 200);
+  assert.deepStrictEqual((await response.json()).files, []);
+
+  fs.writeFileSync(METADATA_PATH, "[]\n", "utf8");
+});
+
+test("a traversal record cannot download a file outside uploads", async () => {
+  const outside = path.join(STORAGE_ROOT, "metadata-neighbor.txt");
+  fs.writeFileSync(outside, "must stay private", "utf8");
+  fs.writeFileSync(METADATA_PATH, JSON.stringify([{
+    id: "traversal-test",
+    originalName: "metadata-neighbor.txt",
+    storedName: "..\\metadata-neighbor.txt",
+    mimeType: "text/plain",
+    size: 16,
+    sizeLabel: "16 B",
+    uploadedAt: new Date().toISOString(),
+    expiresAt: null,
+    downloadPath: "/download/traversal-test"
+  }]) + "\n", "utf8");
+
+  try {
+    const response = await fetch(`${baseUrl}/download/traversal-test`);
+    assert.strictEqual(response.status, 410);
+    assert.match(await response.text(), /no longer available/);
+    assert.strictEqual(fs.readFileSync(outside, "utf8"), "must stay private");
+  } finally {
+    fs.rmSync(outside, { force: true });
+    fs.writeFileSync(METADATA_PATH, "[]\n", "utf8");
+  }
+});
+
+test("an old directory in uploads does not crash or get recursively removed", () => {
+  const directory = path.join(UPLOAD_DIR, "orphan-directory");
+  fs.mkdirSync(directory);
+  const old = Date.now() - 25 * 60 * 60 * 1000;
+  fs.utimesSync(directory, new Date(old), new Date(old));
+
+  try {
+    assert.doesNotThrow(() => sweep());
+    assert.ok(fs.existsSync(directory), "cleanup must not recursively remove directories");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("file list rebuilds download paths from the record id", async () => {
+  const created = await upload("canonical.txt", "canonical", 24);
+  const entry = (await created.json()).files[0];
+  const files = readMetadata();
+  files.find((file) => file.id === entry.id).downloadPath = "javascript:alert(1)";
+  fs.writeFileSync(METADATA_PATH, `${JSON.stringify(files, null, 2)}\n`, "utf8");
+
+  const listed = await fetch(`${baseUrl}/api/files`);
+  const listedEntry = (await listed.json()).files.find((file) => file.id === entry.id);
+  assert.strictEqual(listedEntry.downloadPath, `/download/${entry.id}`);
+});
+
+test("invalid numeric configuration fails at startup", () => {
+  for (const [name, value, options] of [
+    ["MAX_FILE_SIZE_MB", "not-a-number", { min: Number.MIN_VALUE }],
+    ["SWEEP_INTERVAL_MINUTES", "not-a-number", { min: Number.MIN_VALUE }],
+    ["DEFAULT_EXPIRY_HOURS", "1.5", { integer: true, min: 0 }],
+    ["MAX_EXPIRY_HOURS", "0", { integer: true, min: 1 }]
+  ]) {
+    assert.throws(
+      () => parseNumericEnv(name, value, 1, options),
+      new RegExp(name)
+    );
+  }
+});
+
+test("unauthenticated uploads require an explicit opt-in", () => {
+  assert.throws(
+    () => validateUploadAuth("", false),
+    /UPLOAD_TOKEN must be set/
+  );
+  assert.throws(
+    () => validateUploadAuth("YOUR_TOKEN", false),
+    /UPLOAD_TOKEN must be set/
+  );
+  assert.doesNotThrow(() => validateUploadAuth("", true));
+  assert.doesNotThrow(() => validateUploadAuth("real-test-token", false));
 });

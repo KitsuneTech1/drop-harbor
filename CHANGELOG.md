@@ -11,6 +11,6 @@ written, so a bad token never touches your disk. Stored paths are resolved and
 boundary-checked before being served, filenames and extensions are sanitized and
 length-capped, and `X-Content-Type-Options: nosniff` is set on every response. Orphan
 cleanup leaves a file alone for its first hour, so a sweep cannot delete an upload that
-is still in progress. Ships with an eight-test suite on the built-in `node:test`
+is still in progress. Ships with a 17-test suite on the built-in `node:test`
 runner, GitHub Actions CI, a Dockerfile, and a deploy script for Proxmox LXC. Needs
 Node 18 or newer and three dependencies.

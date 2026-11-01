@@ -7,19 +7,56 @@ const fs = require("fs");
 const path = require("path");
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
+
+function parseNumericEnv(name, raw, fallback, { integer = false, min = -Infinity, max = Infinity } = {}) {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+
+  const value = Number(raw);
+  const valid = Number.isFinite(value)
+    && (!integer || Number.isInteger(value))
+    && value >= min
+    && value <= max;
+
+  if (!valid) {
+    const kind = integer ? "finite integer" : "finite number";
+    throw new Error(`${name} must be a ${kind} between ${min} and ${max}.`);
+  }
+
+  return value;
+}
+
+function readNumericEnv(name, fallback, options) {
+  return parseNumericEnv(name, process.env[name], fallback, options);
+}
+
+const PORT = readNumericEnv("PORT", 3000, { integer: true, min: 0, max: 65535 });
 const HOST = process.env.HOST || "localhost";
 // Storage lives next to the app unless DROP_HARBOR_STORAGE_ROOT points elsewhere.
 const STORAGE_ROOT = process.env.DROP_HARBOR_STORAGE_ROOT || __dirname;
 const UPLOAD_DIR = path.join(STORAGE_ROOT, "uploads");
 const DATA_DIR = path.join(STORAGE_ROOT, "data");
 const METADATA_PATH = path.join(DATA_DIR, "files.json");
-const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 1024);
+const MAX_FILE_SIZE_MB = readNumericEnv("MAX_FILE_SIZE_MB", 1024, { min: Number.MIN_VALUE });
 const UPLOAD_TOKEN = process.env.UPLOAD_TOKEN || "";
-const SWEEP_INTERVAL_MINUTES = Number(process.env.SWEEP_INTERVAL_MINUTES || 5);
-const DEFAULT_EXPIRY_HOURS = Number(process.env.DEFAULT_EXPIRY_HOURS || 168);
-const MAX_EXPIRY_HOURS = Number(process.env.MAX_EXPIRY_HOURS || 8760);
+const ALLOW_UNAUTHENTICATED_UPLOADS = process.env.ALLOW_UNAUTHENTICATED_UPLOADS === "true";
+const SWEEP_INTERVAL_MINUTES = readNumericEnv("SWEEP_INTERVAL_MINUTES", 5, { min: Number.MIN_VALUE });
+const DEFAULT_EXPIRY_HOURS = readNumericEnv("DEFAULT_EXPIRY_HOURS", 168, { integer: true, min: 0 });
+const MAX_EXPIRY_HOURS = readNumericEnv("MAX_EXPIRY_HOURS", 8760, { integer: true, min: 1 });
 const MAX_FILES_PER_UPLOAD = 12;
+
+if (DEFAULT_EXPIRY_HOURS > MAX_EXPIRY_HOURS) {
+  throw new Error("DEFAULT_EXPIRY_HOURS cannot exceed MAX_EXPIRY_HOURS.");
+}
+
+function validateUploadAuth(token, allowUnauthenticated) {
+  if (!allowUnauthenticated && (!token || token === "YOUR_TOKEN")) {
+    throw new Error("UPLOAD_TOKEN must be set to a non-placeholder value, or explicitly opt in with ALLOW_UNAUTHENTICATED_UPLOADS=true.");
+  }
+}
+
+validateUploadAuth(UPLOAD_TOKEN, ALLOW_UNAUTHENTICATED_UPLOADS);
 // An upload is on disk before its metadata record is written. Orphan cleanup
 // ignores anything younger than this so a sweep cannot delete a live upload.
 const ORPHAN_GRACE_MS = 60 * 60 * 1000;
@@ -34,11 +71,20 @@ if (!fs.existsSync(METADATA_PATH)) {
 function readMetadata() {
   try {
     const parsed = JSON.parse(fs.readFileSync(METADATA_PATH, "utf8"));
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter(isMetadataRecord) : [];
   } catch (error) {
-    console.error("Failed to read file metadata:", error);
+    console.error("Failed to read file metadata:", error.code || error.message);
     return [];
   }
+}
+
+function isMetadataRecord(file) {
+  return file !== null
+    && typeof file === "object"
+    && !Array.isArray(file)
+    && typeof file.id === "string"
+    && typeof file.originalName === "string"
+    && typeof file.storedName === "string";
 }
 
 function writeMetadata(files) {
@@ -80,11 +126,20 @@ function resolveStoredPath(storedName) {
   }
 
   const absolutePath = path.resolve(UPLOAD_DIR, storedName);
-  const root = path.resolve(UPLOAD_DIR) + path.sep;
-  return absolutePath.startsWith(root) ? absolutePath : null;
+  const relativePath = path.relative(path.resolve(UPLOAD_DIR), absolutePath);
+
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  return absolutePath;
 }
 
 function hoursToExpiry(rawHours) {
+  if (rawHours === null || rawHours === undefined || (typeof rawHours === "string" && rawHours.trim() === "")) {
+    return { ok: false };
+  }
+
   const hours = Number(rawHours);
 
   if (!Number.isInteger(hours) || hours < 0) {
@@ -103,7 +158,7 @@ function hoursToExpiry(rawHours) {
 }
 
 function isExpired(file, now = Date.now()) {
-  if (!file.expiresAt) {
+  if (!file || typeof file !== "object" || !file.expiresAt) {
     return false;
   }
 
@@ -114,8 +169,25 @@ function isExpired(file, now = Date.now()) {
 function deleteStoredFile(storedName) {
   const absolutePath = resolveStoredPath(storedName);
 
-  if (absolutePath) {
-    fs.rmSync(absolutePath, { force: true });
+  if (!absolutePath) {
+    return false;
+  }
+
+  try {
+    const stats = fs.lstatSync(absolutePath);
+
+    if (!stats.isFile() && !stats.isSymbolicLink()) {
+      return false;
+    }
+
+    fs.unlinkSync(absolutePath);
+    return true;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
   }
 }
 
@@ -158,8 +230,9 @@ function sweep() {
       }
     }
 
-    deleteStoredFile(entry);
-    orphans += 1;
+    if (deleteStoredFile(entry)) {
+      orphans += 1;
+    }
   }
 
   if (removed > 0 || orphans > 0) {
@@ -178,7 +251,7 @@ function publicFile(file) {
     sizeLabel: file.sizeLabel,
     uploadedAt: file.uploadedAt,
     expiresAt: file.expiresAt || null,
-    downloadPath: file.downloadPath
+    downloadPath: `/download/${encodeURIComponent(file.id)}`
   };
 }
 
@@ -206,7 +279,7 @@ const upload = multer({
 
 // Runs before multer, so a request with a bad token never writes to disk.
 function requireToken(req, res, next) {
-  if (!UPLOAD_TOKEN) {
+  if (!UPLOAD_TOKEN && ALLOW_UNAUTHENTICATED_UPLOADS) {
     return next();
   }
 
@@ -259,7 +332,7 @@ app.post("/api/upload", requireToken, upload.array("files", MAX_FILES_PER_UPLOAD
     return res.status(400).json({ error: "Select at least one file to upload." });
   }
 
-  const requested = req.body.expiryHours;
+  const requested = (req.body || {}).expiryHours;
   const expiry = hoursToExpiry(
     requested === undefined || requested === "" ? DEFAULT_EXPIRY_HOURS : requested
   );
@@ -357,8 +430,8 @@ function start() {
   return app.listen(PORT, HOST, () => {
     console.log(`Drop Harbor running on http://${HOST}:${PORT}`);
 
-    if (!UPLOAD_TOKEN) {
-      console.warn("UPLOAD_TOKEN is not set. Anyone who can reach this server can upload.");
+    if (ALLOW_UNAUTHENTICATED_UPLOADS) {
+      console.warn("ALLOW_UNAUTHENTICATED_UPLOADS is enabled. Anyone who can reach this server can upload.");
     }
   });
 }
@@ -367,4 +440,4 @@ if (require.main === module) {
   start();
 }
 
-module.exports = { app, start, sweep };
+module.exports = { app, start, sweep, parseNumericEnv, validateUploadAuth };
