@@ -52,12 +52,12 @@ That is all. There is no database and no build step.
    ```
    You should see:
    ```
-   Drop Harbor running on http://0.0.0.0:3000
+   Drop Harbor running on http://localhost:3000
    ```
 
 ## Use it
 
-Open `http://localhost:3000` in a browser. If the server is on another machine, use `http://<that-machine-ip>:3000`.
+Open `http://localhost:3000` in a browser. If the server is on another machine, set `HOST=0.0.0.0` in `.env` before starting, then use `http://<that-machine-ip>:3000`.
 
 1. Drag a small file onto the drop zone, or click it and pick one.
 2. Leave the lifetime on `7 days`, or choose another one.
@@ -90,7 +90,7 @@ You should get back a `201` and JSON like this:
 
 ## It worked if ...
 
-- `npm start` printed `Drop Harbor running on http://0.0.0.0:3000` and did not exit.
+- `npm start` printed `Drop Harbor running on http://localhost:3000` and did not exit.
 - The page at `http://localhost:3000` loads with a styled upload panel, not plain text.
 - You uploaded a file, opened the copied link in a new tab, and got the same file back.
 - Typing part of the filename in the search box narrows the library down to it.
@@ -99,7 +99,7 @@ You should get back a `201` and JSON like this:
 
 ## Troubleshooting
 
-- **`Error: listen EADDRINUSE: address already in use 0.0.0.0:3000`** Something else already holds port 3000. Change `PORT` in `.env` to a free port such as `3001` and start it again.
+- **`Error: listen EADDRINUSE`** Something else already holds the configured port. Change `PORT` in `.env` to a free port such as `3001`, use that port in the URLs below, and start it again.
 - **`{"error":"A valid upload token is required."}` with a 401** The token you sent does not match `UPLOAD_TOKEN` in `.env`. It must match exactly, with no quotes and no trailing spaces. Restart the server after editing `.env`, since the file is read only at startup.
 - **`{"error":"That file is too large. Max size is 1024 MB."}`** The file is over `MAX_FILE_SIZE_MB`. Raise that value in `.env` and restart. If you put Nginx in front, raise `client_max_body_size` to match, or Nginx rejects the upload before it reaches the app.
 - **`This link has expired.` with a 410** The lifetime you picked ran out, and the file was deleted off disk. That is the feature working. Upload it again with a longer lifetime, or `0` for never.
@@ -112,7 +112,7 @@ Set these in `.env`, or as real environment variables.
 | Variable | Default | What it does |
 |---|---|---|
 | `PORT` | `3000` | Port the web server listens on |
-| `HOST` | `0.0.0.0` | Bind address |
+| `HOST` | `localhost` | Bind address. Set to `0.0.0.0` when other machines need to connect |
 | `MAX_FILE_SIZE_MB` | `1024` | Largest single file accepted, in MB |
 | `UPLOAD_TOKEN` | (blank) | Shared token required to upload and to delete. Blank means anyone can upload. Downloads are always public |
 | `DEFAULT_EXPIRY_HOURS` | `168` | Lifetime used when an upload does not pick one. 168 is 7 days |
