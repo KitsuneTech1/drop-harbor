@@ -2,141 +2,162 @@
 
 # Drop Harbor
 
-Self-hosted file drop: upload a file, share a link, search your library, let it expire.
+> Zero-database, self-hosted temporary file drop service. Upload files, generate expiring download links, search your collection, and let files automatically clean up.
 
-![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)
+<p align="center">
+  <a href="https://github.com/KitsuneTech1/drop-harbor/releases"><img src="https://img.shields.io/github/v/release/KitsuneTech1/drop-harbor?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://github.com/KitsuneTech1/drop-harbor/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/KitsuneTech1/drop-harbor/ci.yml?branch=main&label=CI&style=flat-square" alt="CI Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node Version"></a>
+  <a href="Dockerfile"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker Ready"></a>
+  <a href="server.js"><img src="https://img.shields.io/badge/Storage-Zero--Database%20Flatfile-success?style=flat-square" alt="Zero DB"></a>
+</p>
 
-## What it does
+<p align="center">
+  <a href="https://github.com/KitsuneTech1/drop-harbor/releases/latest"><strong>📦 Download Latest Release ZIP</strong></a> •
+  <a href="#-quick-start-for-beginners-zero-config"><strong>⚡ Quick Start Guide</strong></a> •
+  <a href="#-docker--production-deployment"><strong>🐳 Docker Guide</strong></a>
+</p>
 
-- Upload up to 12 files at once, with a size cap you set.
-- Give every file a public download link, a random UUID, no accounts.
-- Search your file library by filename as you type.
-- Pick a lifetime at upload. The link stops working and the file is deleted off disk on time.
-- Delete any file on demand, using the same token that guards uploads.
+---
 
-## What you need
+## Architecture & Lifecycle
 
-- **Node.js 18 or newer.** Check with `node -v`. Download it from [nodejs.org](https://nodejs.org) (pick the LTS build). On Debian or Ubuntu, `sudo apt install nodejs npm` works too.
-- **A machine to run it on.** Your own PC, a spare box, a VPS, or a container. Anything that runs Node.js.
-- **Git**, to get the code. Check with `git --version`. If you do not have it, download the ZIP from the GitHub page instead.
-
-That is all. There is no database and no build step.
-
-## Install
-
-1. Get the code:
-   ```bash
-   git clone https://github.com/KitsuneTech1/drop-harbor.git
-   cd drop-harbor
-   ```
-   You should now see `server.js` and `package.json` in the folder.
-2. Install the three dependencies:
-   ```bash
-   npm install
-   ```
-   You should see a `node_modules` folder appear and a line like `added 80 packages`, with no red error text.
-3. Copy the example settings to a real settings file:
-   ```bash
-   cp .env.example .env
-   ```
-   On Windows PowerShell, use `Copy-Item .env.example .env`.
-4. Open `.env` in a text editor and replace `YOUR_TOKEN` with an upload token. Generate one with:
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
-   ```
-   Paste the output as the `UPLOAD_TOKEN` value. The server refuses to start with a blank or placeholder token unless you explicitly set `ALLOW_UNAUTHENTICATED_UPLOADS=true`.
-5. Start it:
-   ```bash
-   npm start
-   ```
-   You should see:
-   ```
-   Drop Harbor running on http://localhost:3000
-   ```
-
-## Use it
-
-Open `http://localhost:3000` in a browser. If the server is on another machine, set `HOST=0.0.0.0` in `.env` before starting, then use `http://<that-machine-ip>:3000`.
-
-1. Drag a small file onto the drop zone, or click it and pick one.
-2. Leave the lifetime on `7 days`, or choose another one.
-3. Paste your upload token into the token field.
-4. Click the upload button.
-
-The file shows up under "Shared downloads" with a size, an expiry, and three buttons: Download, Copy link, and Delete. Click Copy link and you have a URL anyone can use, like `http://localhost:3000/download/174932ed-9d55-4f65-84ae-439324e55571`.
-
-To check the same thing from a terminal:
-
-```bash
-curl -H "x-upload-token: YOUR_TOKEN" -F "files=@hello.txt" -F "expiryHours=1" \
-  http://localhost:3000/api/upload
+```mermaid
+flowchart TD
+    User([User / API Client]) -->|Upload with Token| Ingest[Token Guard & Size Validator]
+    Ingest -->|Pre-Auth Verification| Storage[(Uploads Storage Directory)]
+    Ingest -->|Record Metadata| DB[(metadata.json)]
+    
+    Recipient([Public Recipient]) -->|GET /download/:uuid| PublicGet[Public Download Route]
+    PublicGet -->|UUID Validation & Expiry Check| Storage
+    PublicGet -->|Stream Content| Recipient
+    
+    subgraph Self-Cleaning Sweeper
+        Timer((Automatic Periodic Sweep)) -->|Check Expiration Timestamp| Sweeper[Sweeper Routine]
+        Sweeper -->|Purge Expired Bytes| Storage
+        Sweeper -->|Prune Expired Entries| DB
+    end
 ```
 
-You should get back a `201` and JSON like this:
+---
 
+## Features
+
+- **Zero Database Required**: Operates using simple, atomic flat-file metadata storage on disk. No SQL, Redis, or Mongo needed.
+- **Auto-Expiring Files**: Choose retention periods from 1 hour to 30 days. Files and metadata are swept off disk automatically.
+- **Secure Upload Guard**: Uploads and deletions are protected by a shared token (`UPLOAD_TOKEN`) checked before any bytes reach the disk.
+- **Instant Search**: Search through stored files in real time directly from the web interface.
+- **Public UUID Links**: Share download URLs with non-authenticated users without exposing server file names or storage paths.
+- **Docker Ready**: Includes lightweight, multi-stage Alpine Dockerfile.
+
+---
+
+## 🚀 Quick Start for Beginners (Zero Config)
+
+### Option 1: One-Click Launch (Windows / Mac / Linux)
+1. Download the [**Latest Release ZIP**](https://github.com/KitsuneTech1/drop-harbor/releases/latest) and unzip it.
+2. Double-click **`start.bat`** (Windows) or run `./start.sh` (macOS/Linux).
+3. The launcher configures your local environment, installs dependencies, and opens `http://localhost:3000` in your browser.
+
+---
+
+## 🐳 Docker & Production Deployment
+
+### Run with Docker
+
+```bash
+# Build the container
+docker build -t drop-harbor .
+
+# Run the container with persistent storage
+docker run -d \
+  -p 3000:3000 \
+  -v drop-data:/app/uploads \
+  -e UPLOAD_TOKEN="your-secure-secret-token" \
+  --name drop-harbor \
+  drop-harbor
+```
+
+### Self-Hosting with Node.js
+
+```bash
+git clone https://github.com/KitsuneTech1/drop-harbor.git
+cd drop-harbor
+npm install
+
+# Copy environment template
+cp .env.example .env
+
+# Generate a secure token
+node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+# Paste this token into your .env file as UPLOAD_TOKEN
+
+npm start
+```
+
+---
+
+## 📡 HTTP API Reference
+
+### Upload a File
+```bash
+curl -X POST http://localhost:3000/upload \
+  -H "X-Upload-Token: your-secure-secret-token" \
+  -F "file=@example.pdf" \
+  -F "expiry=7d"
+```
+
+Response:
 ```json
 {
-  "message": "1 file uploaded successfully.",
-  "files": [{
-    "id": "174932ed-9d55-4f65-84ae-439324e55571",
-    "originalName": "hello.txt",
-    "sizeLabel": "27 B",
-    "expiresAt": "2026-10-12T15:00:27.575Z",
-    "downloadPath": "/download/174932ed-9d55-4f65-84ae-439324e55571"
-  }]
+  "id": "174932ed-9d55-4f65-84ae-439324e55571",
+  "filename": "example.pdf",
+  "size": 1048576,
+  "downloadUrl": "/download/174932ed-9d55-4f65-84ae-439324e55571",
+  "expiresAt": 1793548800000
 }
 ```
 
-## It worked if ...
+### Download a File (Public)
+```bash
+curl -O -J http://localhost:3000/download/174932ed-9d55-4f65-84ae-439324e55571
+```
 
-- `npm start` printed `Drop Harbor running on http://localhost:3000` and did not exit.
-- The page at `http://localhost:3000` loads with a styled upload panel, not plain text.
-- You uploaded a file, opened the copied link in a new tab, and got the same file back.
-- Typing part of the filename in the search box narrows the library down to it.
-- Clicking Delete removes the row, and the copied link then returns `File not found.`
-- `npm test` ends with `pass 17` and `fail 0`.
+### Delete a File
+```bash
+curl -X DELETE http://localhost:3000/files/174932ed-9d55-4f65-84ae-439324e55571 \
+  -H "X-Upload-Token: your-secure-secret-token"
+```
 
-## Troubleshooting
+---
 
-- **`Error: listen EADDRINUSE`** Something else already holds the configured port. Change `PORT` in `.env` to a free port such as `3001`, use that port in the URLs below, and start it again.
-- **`{"error":"A valid upload token is required."}` with a 401** The token you sent does not match `UPLOAD_TOKEN` in `.env`. It must match exactly, with no quotes and no trailing spaces. Restart the server after editing `.env`, since the file is read only at startup.
-- **`{"error":"That file is too large. Max size is 1024 MB."}`** The file is over `MAX_FILE_SIZE_MB`. Raise that value in `.env` and restart. If you put Nginx in front, raise `client_max_body_size` to match, or Nginx rejects the upload before it reaches the app.
-- **`This link has expired.` with a 410** The lifetime you picked ran out, and the file was deleted off disk. That is the feature working. Upload it again with a longer lifetime, or `0` for never.
-- **The page loads but has no styling** The `public/` folder is missing or was not copied. Run the app from inside the repo folder so it can find `public/`.
+## 🧪 Testing
 
-## Config
-
-Set these in `.env`, or as real environment variables.
-
-| Variable | Default | What it does |
-|---|---|---|
-| `PORT` | `3000` | Port the web server listens on |
-| `HOST` | `localhost` | Bind address. Set to `0.0.0.0` when other machines need to connect |
-| `MAX_FILE_SIZE_MB` | `1024` | Largest single file accepted, in MB |
-| `UPLOAD_TOKEN` | (required) | Shared token required to upload and to delete. Downloads are always public |
-| `ALLOW_UNAUTHENTICATED_UPLOADS` | `false` | Explicitly allows uploads without a token. Use only on a trusted network |
-| `DEFAULT_EXPIRY_HOURS` | `168` | Lifetime used when an upload does not pick one. 168 is 7 days |
-| `MAX_EXPIRY_HOURS` | `8760` | Longest lifetime an upload may ask for. 8760 is 1 year |
-| `SWEEP_INTERVAL_MINUTES` | `5` | How often expired files and orphans are deleted off disk. An unclaimed file is left alone for its first hour, so a sweep cannot delete an upload still in progress |
-| `DROP_HARBOR_STORAGE_ROOT` | (app folder) | Parent folder for `uploads/` and `data/`. Point this at a bigger disk if you want |
-
-Uploaded files live in `uploads/`. The metadata index lives in `data/files.json`. Back up or mount both if you want files to survive a rebuild.
-
-Deploying to Docker or a Proxmox LXC, running it under systemd, and putting Nginx or Caddy in front are covered in [docs/DEPLOY.md](docs/DEPLOY.md).
-
-## Running the tests
+Run the automated offline test suite:
 
 ```bash
 npm test
 ```
 
-The suite uses the `node:test` runner built into Node, so there is nothing extra to install. It starts the server on a random port against a temporary folder, so your real `uploads/` and `data/` are left alone.
+Tests cover:
+- Pre-upload token verification (ensures unauthenticated streams never touch disk).
+- Round-trip upload, streaming download, and expiration deletion.
+- Path traversal injection defenses.
+- Orphan file detection and automatic cleanup sweeps.
+
+---
+
+## 🔒 Security Model
+
+- **Disk-Fill Prevention**: Token checks occur in memory before file streams are buffered to disk.
+- **UUID Sanitization**: Downloads only resolve via UUID v4 tokens; filesystem paths are never accepted from clients.
+- **Fail-Safe Startup**: Rejects startup if configured with blank or default tokens unless explicitly allowed via `ALLOW_UNAUTHENTICATED_UPLOADS=true`.
+
+---
 
 ## License
 
-MIT. Copyright (c) 2026 Kitsune Technologies LLC. Do what you like with it, commercially or otherwise, just keep the copyright notice. Full text in [LICENSE](LICENSE).
-
----
+MIT. Copyright (c) 2026 Kitsune Technologies LLC. Full text in [LICENSE](LICENSE).
 
 <p align="center"><sub>Part of <b>Buildtober 2026</b>: 31 open source projects in 31 days. Built by <a href="https://kitsunetechnologies.org/work">Kitsune Technologies</a>. More at <a href="https://github.com/KitsuneTech1">github.com/KitsuneTech1</a>.</sub></p>
